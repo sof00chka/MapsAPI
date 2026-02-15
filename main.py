@@ -10,6 +10,12 @@ SCREEN_WIDTH = MAP_SIZE[0] * MAP_SCALE + 300
 MAP_BORDER = 25
 SCREEN_HEIGHT = MAP_SIZE[1] * MAP_SCALE + MAP_BORDER * 2
 
+# Границы координат
+MIN_LON = 30.0
+MAX_LON = 45.0
+MIN_LAT = 50.0
+MAX_LAT = 65.0
+
 
 class MyGUIWindow(arcade.Window):
     def __init__(self):
@@ -125,6 +131,30 @@ class MyGUIWindow(arcade.Window):
                 self.spn[a] = float(value.new_value)
         except ValueError:
             self.gui_elements[a + 2].text = value.old_value
+
+    def on_key_press(self, key, modifiers):
+        # Вычисляем шаг перемещения (10% от текущего spn)
+        move_step_lon = self.spn[0] * 0.1
+        move_step_lat = self.spn[1] * 0.1
+        if key == arcade.key.UP:
+            # Перемещаем на север (увеличиваем широту)
+            self.ll[1] = min(self.ll[1] + move_step_lat, MAX_LAT)
+        elif key == arcade.key.DOWN:
+            # Перемещаем на юг (уменьшаем широту)
+            self.ll[1] = max(self.ll[1] - move_step_lat, MIN_LAT)
+        elif key == arcade.key.LEFT:
+            # Перемещаем на запад (уменьшаем долготу)
+            self.ll[0] = max(self.ll[0] - move_step_lon, MIN_LON)
+        elif key == arcade.key.RIGHT:
+            # Перемещаем на восток (увеличиваем долготу)
+            self.ll[0] = min(self.ll[0] + move_step_lon, MAX_LON)
+        else:
+            return  # Не обновляем карту, если нажата не та клавиша
+        # Обновляем значения в полях ввода
+        self.gui_elements[0].text = str(self.ll[0])
+        self.gui_elements[1].text = str(self.ll[1])
+        # Обновляем карту
+        self.update_map()
 
 
 if __name__ == "__main__":
