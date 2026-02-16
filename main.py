@@ -29,6 +29,7 @@ class MyGUIWindow(arcade.Window):
         self.ll = [37.677751, 55.757718]
         self.spn = [0.016457, 0.00619]
         self.Map = None
+        self.light_theme = True # переключатель темы карты, по умолчанию светлая
         self.update_map()
 
         self.setup_widgets()  # Функция ниже
@@ -89,6 +90,10 @@ class MyGUIWindow(arcade.Window):
         flat_button.on_click = lambda event: self.update_map()
         self.manager.add(flat_button)
 
+        change_theme_button = UIFlatButton(text='Сменить тему', width=200, heiht = 50, color=arcade.color.BLUE, y=90)
+        change_theme_button.on_click = lambda event: self.change_theme()
+        self.manager.add(change_theme_button)
+
     def on_draw(self):
         self.clear()
         arcade.draw_texture_rect(self.Map, arcade.rect.XYWH(SCREEN_WIDTH - MAP_SIZE[0] * MAP_SCALE / 2 - MAP_BORDER,
@@ -96,14 +101,23 @@ class MyGUIWindow(arcade.Window):
                                                             MAP_SIZE[0] * MAP_SCALE, MAP_SIZE[1] * MAP_SCALE))
         self.manager.draw()
 
+
     def update_map(self):
         api_server = "https://static-maps.yandex.ru/v1"
         # параметр scale, отвечающий за размер, по умолчанию максимально возможное 600x450
+
+        if self.light_theme:
+            text = 'light'
+        else:
+            text = 'dark'
+
         params = {
             'll': ",".join(map(str, self.ll)),
             'spn': ','.join(map(str, self.spn)),
-            'apikey': 'f3a0fe3a-b07e-4840-a1da-06f18b2ddf13'
+            'apikey': 'f3a0fe3a-b07e-4840-a1da-06f18b2ddf13',
+            'theme': text
         }
+
         response = requests.get(api_server, params=params)
         if not response:
             raise Exception('ошибка с запросом')
@@ -174,6 +188,9 @@ class MyGUIWindow(arcade.Window):
         self.gui_elements[3].text = str(round(self.spn[1], 6))
         self.update_map()
 
+    def change_theme(self):
+        self.light_theme = not self.light_theme
+        self.update_map()
 
 if __name__ == "__main__":
     game = MyGUIWindow()
