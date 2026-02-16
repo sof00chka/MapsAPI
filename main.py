@@ -133,7 +133,19 @@ class MyGUIWindow(arcade.Window):
             self.gui_elements[a + 2].text = value.old_value
 
     def on_key_press(self, key, modifiers):
-        # Вычисляем шаг перемещения (10% от текущего spn)
+        # коэф-нт изменения масштаба (можно поменять потом)
+        zoom_step = 2.0
+        if key == arcade.key.PAGEUP:
+            # spn (приближаем)
+            self.spn[0] = max(self.spn[0] / zoom_step, 0.0001)
+            self.spn[1] = max(self.spn[1] / zoom_step, 0.0001)
+            self.sync_ui_and_update()
+        elif key == arcade.key.PAGEDOWN:
+            #  spn (отдаляем)
+            self.spn[0] = min(self.spn[0] * zoom_step, 90.0)
+            self.spn[1] = min(self.spn[1] * zoom_step, 90.0)
+            self.sync_ui_and_update()
+        #  шаг перемещения (10% от текущего spn)
         move_step_lon = self.spn[0] * 0.1
         move_step_lat = self.spn[1] * 0.1
         if key == arcade.key.UP:
@@ -155,22 +167,6 @@ class MyGUIWindow(arcade.Window):
         self.gui_elements[1].text = str(self.ll[1])
         # Обновляем карту
         self.update_map()
-
-    def on_key_press(self, key, modifiers):
-        # коэф-нт изменения масштаба (можно поменять потом)
-        zoom_step = 2.0
-
-        if key == arcade.key.PAGEUP:
-            # spn (приближаем)
-            self.spn[0] = max(self.spn[0] / zoom_step, 0.0001)
-            self.spn[1] = max(self.spn[1] / zoom_step, 0.0001)
-            self.sync_ui_and_update()
-
-        elif key == arcade.key.PAGEDOWN:
-            #  spn (отдаляем)
-            self.spn[0] = min(self.spn[0] * zoom_step, 90.0)
-            self.spn[1] = min(self.spn[1] * zoom_step, 90.0)
-            self.sync_ui_and_update()
 
     def sync_ui_and_update(self):
         # поля ввода меняются
