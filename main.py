@@ -156,6 +156,28 @@ class MyGUIWindow(arcade.Window):
         # Обновляем карту
         self.update_map()
 
+    def on_key_press(self, key, modifiers):
+        # коэф-нт изменения масштаба (можно поменять потом)
+        zoom_step = 2.0
+
+        if key == arcade.key.PAGEUP:
+            # spn (приближаем)
+            self.spn[0] = max(self.spn[0] / zoom_step, 0.0001)
+            self.spn[1] = max(self.spn[1] / zoom_step, 0.0001)
+            self.sync_ui_and_update()
+
+        elif key == arcade.key.PAGEDOWN:
+            #  spn (отдаляем)
+            self.spn[0] = min(self.spn[0] * zoom_step, 90.0)
+            self.spn[1] = min(self.spn[1] * zoom_step, 90.0)
+            self.sync_ui_and_update()
+
+    def sync_ui_and_update(self):
+        # поля ввода меняются
+        self.gui_elements[2].text = str(round(self.spn[0], 6))
+        self.gui_elements[3].text = str(round(self.spn[1], 6))
+        self.update_map()
+
 
 if __name__ == "__main__":
     game = MyGUIWindow()
