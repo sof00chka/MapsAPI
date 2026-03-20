@@ -29,7 +29,12 @@ class MyGUIWindow(arcade.Window):
         self.ll = [37.677751, 55.757718]
         self.spn = [0.016457, 0.00619]
         self.Map = None
-        self.light_theme = True # переключатель темы карты, по умолчанию светлая
+        self.light_theme = True  # переключатель темы карты, по умолчанию светлая
+        self.point = None
+        self.error_message = ""
+        self.success_message = ""
+        self.message_timer = 0
+        self.message_text = None
         self.update_map()
 
         self.setup_widgets()  # Функция ниже
@@ -40,7 +45,7 @@ class MyGUIWindow(arcade.Window):
                         text="ll:",
                         font_size=20,
                         text_color=arcade.color.BLACK,
-                        width=300,)
+                        width=300, )
         self.manager.add(label)
 
         input_text = UIInputText(y=SCREEN_HEIGHT - 100,
@@ -61,7 +66,7 @@ class MyGUIWindow(arcade.Window):
         self.manager.add(input_text)
         self.gui_elements.append(input_text)
 
-        label = UILabel(y = SCREEN_HEIGHT - 200,
+        label = UILabel(y=SCREEN_HEIGHT - 200,
                         text="spn:",
                         font_size=20,
                         text_color=arcade.color.BLACK,
@@ -86,21 +91,141 @@ class MyGUIWindow(arcade.Window):
         self.manager.add(input_text)
         self.gui_elements.append(input_text)
 
-        flat_button = UIFlatButton(text="показать", width=200, height=50, color=arcade.color.BLUE, y = 25)
+        flat_button = UIFlatButton(text="показать", width=200, height=50, color=arcade.color.BLUE, y=25)
         flat_button.on_click = lambda event: self.update_map()
         self.manager.add(flat_button)
 
-        change_theme_button = UIFlatButton(text='Сменить тему', width=200, heiht = 50, color=arcade.color.BLUE, y=90)
+        change_theme_button = UIFlatButton(text='Сменить тему', width=200, height=50, color=arcade.color.BLUE, y=90)
         change_theme_button.on_click = lambda event: self.change_theme()
         self.manager.add(change_theme_button)
+
+        label = UILabel(y=SCREEN_HEIGHT - 370, text="Поиск объекта:", font_size=20, text_color=arcade.color.BLACK,
+                        width=200)
+        self.manager.add(label)
+        self.search_input = UIInputText(y=SCREEN_HEIGHT - 420, width=250, height=30, text="",
+                                        text_color=arcade.color.BLACK)
+        self.manager.add(self.search_input)
+
+        search_button = UIFlatButton(text='Искать', width=200, height=50, color=arcade.color.GREEN, y=155)
+        search_button.on_click = lambda event: self.search_object()
+        self.manager.add(search_button)
+
+    def show_error(self, message):
+        self.error_message = message
+        self.success_message = ""
+        self.message_timer = 180
+        self.message_text = arcade.Text(
+            message,
+            SCREEN_WIDTH // 2,
+            15,
+            arcade.color.RED_DEVIL,
+            font_size=14,
+            anchor_x="center",
+            anchor_y="center"
+        )
+
+    def show_success(self, message):
+        self.success_message = message
+        self.error_message = ""
+        self.message_timer = 180
+        self.message_text = arcade.Text(
+            message,
+            SCREEN_WIDTH // 2,
+            15,
+            arcade.color.GREEN,
+            font_size=14,
+            anchor_x="center",
+            anchor_y="center"
+        )
 
     def on_draw(self):
         self.clear()
         arcade.draw_texture_rect(self.Map, arcade.rect.XYWH(SCREEN_WIDTH - MAP_SIZE[0] * MAP_SCALE / 2 - MAP_BORDER,
-                                                            SCREEN_HEIGHT / 2,
-                                                            MAP_SIZE[0] * MAP_SCALE, MAP_SIZE[1] * MAP_SCALE))
+                                                            SCREEN_HEIGHT / 2, MAP_SIZE[0] * MAP_SCALE,
+                                                            MAP_SIZE[1] * MAP_SCALE))
+
+        if self.message_timer > 0 and self.message_text:
+            self.message_text.draw()
+            self.message_timer -= 1
+            if self.message_timer == 0:
+                self.message_text = None
+                self.error_message = ""
+                self.success_message = ""
+
         self.manager.draw()
 
+    def search_object(self):
+        query = self.search_input.text.strip()
+
+        if not query:
+            self.show_error("Введите запрос для поиска")
+            return
+
+        geocoder_api_server = "http://geocode-maps.yandex.ru/1.x/"
+        geocoder_params = {
+            "apikey": "8013b162-6b42-4997-9691-77b7074026e0",
+            "geocode": query,
+            "format": "json"
+        }
+        try:
+            response = requests.get(geocoder_api_server, params=geocoder_params)
+
+            if not response:
+                self.show_error("Ошибка при обращении к геокодеру")
+                return
+
+            json_response = response.json()
+            feature_member = json_response["response"]["GeoObjectCollection"]["featureMember"]
+
+            if not feature_member:
+                self.show_error(f"Объект '{query}' не найден")
+                return
+
+            # Получаем первый топоним из ответа геокодера
+            toponym = feature_member[0]["GeoObject"]
+
+            # Получаем координаты центра топонима
+            toponym_coordinates = toponym["Point"]["pos"]
+            toponym_longitude, toponym_latitude = toponym_coordinates.split(" ")
+
+            toponym_name = toponym["name"]
+            if "description" in toponym:
+                toponym_name += f", {toponym['description']}"
+
+            self.ll = [float(toponym_longitude), float(toponym_latitude)]
+
+            self.gui_elements[0].text = str(self.ll[0])
+            self.gui_elements[1].text = str(self.ll[1])
+
+            bbox = toponym.get("boundedBy", {}).get("Envelope", {})
+
+            if bbox:
+                lower_corner = bbox.get("lowerCorner", "").split()
+                upper_corner = bbox.get("upperCorner", "").split()
+
+                if len(lower_corner) == 2 and len(upper_corner) == 2:
+                    delta_lon = abs(float(upper_corner[0]) - float(lower_corner[0]))
+                    delta_lat = abs(float(upper_corner[1]) - float(lower_corner[1]))
+                    self.spn[0] = max(delta_lon * 1.2, 0.0001)
+                    self.spn[1] = max(delta_lat * 1.2, 0.0001)
+                    self.spn[0] = min(self.spn[0], 90.0)
+                    self.spn[1] = min(self.spn[1], 90.0)
+                else:
+                    self.spn = [0.005, 0.005]
+            else:
+                self.spn = [0.005, 0.005]
+
+            self.gui_elements[2].text = str(round(self.spn[0], 6))
+            self.gui_elements[3].text = str(round(self.spn[1], 6))
+
+            self.point = (float(toponym_longitude), float(toponym_latitude))
+
+            self.update_map()
+
+            self.show_success(f"Найден: {toponym_name}")
+
+        except Exception as e:
+            self.show_error(f"Ошибка при поиске: {str(e)}")
 
     def update_map(self):
         api_server = "https://static-maps.yandex.ru/v1"
@@ -115,18 +240,24 @@ class MyGUIWindow(arcade.Window):
             'll': ",".join(map(str, self.ll)),
             'spn': ','.join(map(str, self.spn)),
             'apikey': 'f3a0fe3a-b07e-4840-a1da-06f18b2ddf13',
-            'theme': text
+            'theme': text,
+            'size': '600,450'
         }
 
-        response = requests.get(api_server, params=params)
-        if not response:
-            raise Exception('ошибка с запросом')
+        if self.point:
+            params['pt'] = f"{self.point[0]},{self.point[1]},pm2rdm"
 
-        # этот способ намного быстрее сохранения картинки отдельно
-        # этим способом хоть какая-то плавность при быстром изенении карты (пункт 2 и 3)
-        image = Image.open(BytesIO(response.content))
-        image = image.convert("RGBA")
-        self.Map = arcade.Texture(image)
+        try:
+            response = requests.get(api_server, params=params)
+            if not response:
+                self.show_error("Ошибка при загрузке карты")
+                return
+
+            image = Image.open(BytesIO(response.content))
+            image = image.convert("RGBA")
+            self.Map = arcade.Texture(image)
+        except Exception as e:
+            self.show_error(f"Ошибка при загрузке карты: {str(e)}")
 
     def ll_change(self, value, a):
         try:
@@ -134,8 +265,10 @@ class MyGUIWindow(arcade.Window):
                 self.ll[a] = 0
             else:
                 self.ll[a] = float(value.new_value)
+                self.point = None
         except ValueError:
             self.gui_elements[a].text = value.old_value
+            self.show_error("Некорректный формат координат")
 
     def spn_change(self, value, a):
         try:
@@ -145,10 +278,17 @@ class MyGUIWindow(arcade.Window):
                 self.spn[a] = float(value.new_value)
         except ValueError:
             self.gui_elements[a + 2].text = value.old_value
+            self.show_error("Некорректный формат масштаба")
 
     def on_key_press(self, key, modifiers):
         # коэф-нт изменения масштаба (можно поменять потом)
         zoom_step = 2.0
+
+        # Поиск
+        if key == arcade.key.ENTER:
+            self.search_object()
+            return
+
         if key == arcade.key.PAGEUP:
             # spn (приближаем)
             self.spn[0] = max(self.spn[0] / zoom_step, 0.0001)
@@ -164,16 +304,36 @@ class MyGUIWindow(arcade.Window):
         move_step_lat = self.spn[1] * 0.1
         if key == arcade.key.UP:
             # Перемещаем на север (увеличиваем широту)
-            self.ll[1] = min(self.ll[1] + move_step_lat, MAX_LAT)
+            new_lat = self.ll[1] + move_step_lat
+            if new_lat <= MAX_LAT:
+                self.ll[1] = new_lat
+                self.point = None  # При перемещении убираем метку
+            else:
+                self.show_error("Достигнута северная граница")
         elif key == arcade.key.DOWN:
             # Перемещаем на юг (уменьшаем широту)
-            self.ll[1] = max(self.ll[1] - move_step_lat, MIN_LAT)
+            new_lat = self.ll[1] - move_step_lat
+            if new_lat >= MIN_LAT:
+                self.ll[1] = new_lat
+                self.point = None
+            else:
+                self.show_error("Достигнута южная граница")
         elif key == arcade.key.LEFT:
             # Перемещаем на запад (уменьшаем долготу)
-            self.ll[0] = max(self.ll[0] - move_step_lon, MIN_LON)
+            new_lon = self.ll[0] - move_step_lon
+            if new_lon >= MIN_LON:
+                self.ll[0] = new_lon
+                self.point = None
+            else:
+                self.show_error("Достигнута западная граница")
         elif key == arcade.key.RIGHT:
             # Перемещаем на восток (увеличиваем долготу)
-            self.ll[0] = min(self.ll[0] + move_step_lon, MAX_LON)
+            new_lon = self.ll[0] + move_step_lon
+            if new_lon <= MAX_LON:
+                self.ll[0] = new_lon
+                self.point = None
+            else:
+                self.show_error("Достигнута восточная граница")
         else:
             return  # Не обновляем карту, если нажата не та клавиша
         # Обновляем значения в полях ввода
@@ -191,6 +351,7 @@ class MyGUIWindow(arcade.Window):
     def change_theme(self):
         self.light_theme = not self.light_theme
         self.update_map()
+
 
 if __name__ == "__main__":
     game = MyGUIWindow()
