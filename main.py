@@ -4,7 +4,7 @@ import requests
 from PIL import Image
 from io import BytesIO
 
-MAP_SIZE = (600, 450)  # размеры png от яндекса
+MAP_SIZE = (650, 500)  # размеры png от яндекса
 MAP_SCALE = 1.5  # увелечение png
 SCREEN_WIDTH = MAP_SIZE[0] * MAP_SCALE + 300
 MAP_BORDER = 25
@@ -35,6 +35,7 @@ class MyGUIWindow(arcade.Window):
         self.success_message = ""
         self.message_timer = 0
         self.message_text = None
+        self.show_postal_code = False
         self.update_map()
 
         self.setup_widgets()  # Функция ниже
@@ -114,6 +115,11 @@ class MyGUIWindow(arcade.Window):
         clear_button.on_click = lambda event: self.clear_points()
         self.manager.add(clear_button)
 
+        self.postal_code_button = UIFlatButton(text='Индекс: ВЫКЛ', width=200, height=50, color=arcade.color.GRAY,
+                                               y=285)
+        self.postal_code_button.on_click = lambda event: self.toggle_postal_code()
+        self.manager.add(self.postal_code_button)
+
     def clear_points(self):
         self.points = []
         self.message_text = None
@@ -160,6 +166,61 @@ class MyGUIWindow(arcade.Window):
 
         self.manager.draw()
 
+    def toggle_postal_code(self):
+        self.show_postal_code = not self.show_postal_code
+        if self.show_postal_code:
+            self.postal_code_button.text = 'Индекс: ВКЛ'
+            self.postal_code_button.color = arcade.color.GREEN
+        else:
+            self.postal_code_button.text = 'Индекс: ВЫКЛ'
+            self.postal_code_button.color = arcade.color.GRAY
+
+        if self.points:
+            self.update_points_addresses()
+
+    def update_points_addresses(self):
+        if not self.points:
+            return
+
+        geocoder_api_server = "http://geocode-maps.yandex.ru/1.x/"
+
+        all_points_info = []
+        for point in self.points:
+            geocoder_params = {
+                "apikey": "8013b162-6b42-4997-9691-77b7074026e0",
+                "geocode": f"{point[0]},{point[1]}",
+                "format": "json",
+                "kind": "house",
+                "results": "1"
+            }
+
+            try:
+                response = requests.get(geocoder_api_server, params=geocoder_params)
+                if response:
+                    json_response = response.json()
+                    feature_member = json_response["response"]["GeoObjectCollection"]["featureMember"]
+
+                    if feature_member:
+                        toponym = feature_member[0]["GeoObject"]
+                        address = toponym["metaDataProperty"]["GeocoderMetaData"]["text"]
+
+                        if self.show_postal_code:
+                            postal_code = toponym["metaDataProperty"]["GeocoderMetaData"]["Address"].get("postal_code",
+                                                                                                         "")
+                            if postal_code:
+                                address = f"{postal_code}, {address}"
+
+                        all_points_info.append(address)
+                    else:
+                        all_points_info.append(f"{point[0]}, {point[1]}")
+                else:
+                    all_points_info.append(f"{point[0]}, {point[1]}")
+            except Exception:
+                all_points_info.append(f"{point[0]}, {point[1]}")
+
+        if all_points_info:
+            self.show_success(f"Найден: {all_points_info[-1]}")
+
     def search_object(self):
         query = self.search_input.text.strip()
 
@@ -194,9 +255,12 @@ class MyGUIWindow(arcade.Window):
             toponym_coordinates = toponym["Point"]["pos"]
             toponym_longitude, toponym_latitude = toponym_coordinates.split(" ")
 
-            toponym_name = toponym["name"]
-            if "description" in toponym:
-                toponym_name += f", {toponym['description']}"
+            toponym_name = toponym["metaDataProperty"]["GeocoderMetaData"]["text"]
+
+            if self.show_postal_code:
+                postal_code = toponym["metaDataProperty"]["GeocoderMetaData"]["Address"].get("postal_code", "")
+                if postal_code:
+                    toponym_name = f"{postal_code}, {toponym_name}"
 
             bbox = toponym.get("boundedBy", {}).get("Envelope", {})
             if bbox:
