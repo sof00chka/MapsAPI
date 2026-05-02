@@ -30,7 +30,7 @@ class MyGUIWindow(arcade.Window):
         self.spn = [0.016457, 0.00619]
         self.Map = None
         self.light_theme = True  # переключатель темы карты, по умолчанию светлая
-        self.point = None
+        self.points = []  # список для хранения всех меток
         self.error_message = ""
         self.success_message = ""
         self.message_timer = 0
@@ -91,7 +91,7 @@ class MyGUIWindow(arcade.Window):
         self.manager.add(input_text)
         self.gui_elements.append(input_text)
 
-        flat_button = UIFlatButton(text="показать", width=200, height=50, color=arcade.color.BLUE, y=25)
+        flat_button = UIFlatButton(text="Показать", width=200, height=50, color=arcade.color.BLUE, y=25)
         flat_button.on_click = lambda event: self.update_map()
         self.manager.add(flat_button)
 
@@ -109,6 +109,17 @@ class MyGUIWindow(arcade.Window):
         search_button = UIFlatButton(text='Искать', width=200, height=50, color=arcade.color.GREEN, y=155)
         search_button.on_click = lambda event: self.search_object()
         self.manager.add(search_button)
+
+        clear_button = UIFlatButton(text='Сбросить', width=200, height=50, color=arcade.color.RED, y=220)
+        clear_button.on_click = lambda event: self.clear_points()
+        self.manager.add(clear_button)
+
+    def clear_points(self):
+        self.points = []
+        self.message_text = None
+        self.success_message = ""
+        self.error_message = ""
+        self.update_map()
 
     def show_error(self, message):
         self.error_message = message
@@ -144,13 +155,8 @@ class MyGUIWindow(arcade.Window):
                                                             SCREEN_HEIGHT / 2, MAP_SIZE[0] * MAP_SCALE,
                                                             MAP_SIZE[1] * MAP_SCALE))
 
-        if self.message_timer > 0 and self.message_text:
+        if self.message_text:
             self.message_text.draw()
-            self.message_timer -= 1
-            if self.message_timer == 0:
-                self.message_text = None
-                self.error_message = ""
-                self.success_message = ""
 
         self.manager.draw()
 
@@ -192,33 +198,56 @@ class MyGUIWindow(arcade.Window):
             if "description" in toponym:
                 toponym_name += f", {toponym['description']}"
 
-            self.ll = [float(toponym_longitude), float(toponym_latitude)]
-
-            self.gui_elements[0].text = str(self.ll[0])
-            self.gui_elements[1].text = str(self.ll[1])
-
             bbox = toponym.get("boundedBy", {}).get("Envelope", {})
-
             if bbox:
                 lower_corner = bbox.get("lowerCorner", "").split()
                 upper_corner = bbox.get("upperCorner", "").split()
-
                 if len(lower_corner) == 2 and len(upper_corner) == 2:
-                    delta_lon = abs(float(upper_corner[0]) - float(lower_corner[0]))
-                    delta_lat = abs(float(upper_corner[1]) - float(lower_corner[1]))
-                    self.spn[0] = max(delta_lon * 1.2, 0.0001)
-                    self.spn[1] = max(delta_lat * 1.2, 0.0001)
-                    self.spn[0] = min(self.spn[0], 90.0)
-                    self.spn[1] = min(self.spn[1], 90.0)
+                    new_min_lon = float(lower_corner[0])
+                    new_min_lat = float(lower_corner[1])
+                    new_max_lon = float(upper_corner[0])
+                    new_max_lat = float(upper_corner[1])
                 else:
-                    self.spn = [0.005, 0.005]
+                    new_min_lon = float(toponym_longitude)
+                    new_min_lat = float(toponym_latitude)
+                    new_max_lon = float(toponym_longitude)
+                    new_max_lat = float(toponym_latitude)
             else:
-                self.spn = [0.005, 0.005]
+                new_min_lon = float(toponym_longitude)
+                new_min_lat = float(toponym_latitude)
+                new_max_lon = float(toponym_longitude)
+                new_max_lat = float(toponym_latitude)
+            self.points.append((float(toponym_longitude), float(toponym_latitude)))
 
+            if len(self.points) == 1:
+                self.min_lon = new_min_lon
+                self.min_lat = new_min_lat
+                self.max_lon = new_max_lon
+                self.max_lat = new_max_lat
+            else:
+                # Расширяем границы, если новый объект выходит за пределы
+                self.min_lon = min(self.min_lon, new_min_lon)
+                self.min_lat = min(self.min_lat, new_min_lat)
+                self.max_lon = max(self.max_lon, new_max_lon)
+                self.max_lat = max(self.max_lat, new_max_lat)
+
+            self.ll = [(self.min_lon + self.max_lon) / 2, (self.min_lat + self.max_lat) / 2]
+
+            delta_lon = self.max_lon - self.min_lon
+            delta_lat = self.max_lat - self.min_lat
+
+            if delta_lon == 0 and delta_lat == 0:
+                self.spn = [0.005, 0.005]
+            else:
+                self.spn[0] = max(delta_lon * 1.2, 0.0001)
+                self.spn[1] = max(delta_lat * 1.2, 0.0001)
+                self.spn[0] = min(self.spn[0], 90.0)
+                self.spn[1] = min(self.spn[1], 90.0)
+
+            self.gui_elements[0].text = str(round(self.ll[0], 6))
+            self.gui_elements[1].text = str(round(self.ll[1], 6))
             self.gui_elements[2].text = str(round(self.spn[0], 6))
             self.gui_elements[3].text = str(round(self.spn[1], 6))
-
-            self.point = (float(toponym_longitude), float(toponym_latitude))
 
             self.update_map()
 
@@ -229,7 +258,6 @@ class MyGUIWindow(arcade.Window):
 
     def update_map(self):
         api_server = "https://static-maps.yandex.ru/v1"
-        # параметр scale, отвечающий за размер, по умолчанию максимально возможное 600x450
 
         if self.light_theme:
             text = 'light'
@@ -244,8 +272,14 @@ class MyGUIWindow(arcade.Window):
             'size': '600,450'
         }
 
-        if self.point:
-            params['pt'] = f"{self.point[0]},{self.point[1]},pm2rdm"
+        if self.points:
+            points_str = []
+            for i, p in enumerate(self.points):
+                if i == len(self.points) - 1:
+                    points_str.append(f"{p[0]},{p[1]},pm2rdm")
+                else:
+                    points_str.append(f"{p[0]},{p[1]},pm2blm")
+            params['pt'] = "~".join(points_str)
 
         try:
             response = requests.get(api_server, params=params)
@@ -265,7 +299,6 @@ class MyGUIWindow(arcade.Window):
                 self.ll[a] = 0
             else:
                 self.ll[a] = float(value.new_value)
-                self.point = None
         except ValueError:
             self.gui_elements[a].text = value.old_value
             self.show_error("Некорректный формат координат")
@@ -307,7 +340,6 @@ class MyGUIWindow(arcade.Window):
             new_lat = self.ll[1] + move_step_lat
             if new_lat <= MAX_LAT:
                 self.ll[1] = new_lat
-                self.point = None  # При перемещении убираем метку
             else:
                 self.show_error("Достигнута северная граница")
         elif key == arcade.key.DOWN:
@@ -315,7 +347,6 @@ class MyGUIWindow(arcade.Window):
             new_lat = self.ll[1] - move_step_lat
             if new_lat >= MIN_LAT:
                 self.ll[1] = new_lat
-                self.point = None
             else:
                 self.show_error("Достигнута южная граница")
         elif key == arcade.key.LEFT:
@@ -323,7 +354,6 @@ class MyGUIWindow(arcade.Window):
             new_lon = self.ll[0] - move_step_lon
             if new_lon >= MIN_LON:
                 self.ll[0] = new_lon
-                self.point = None
             else:
                 self.show_error("Достигнута западная граница")
         elif key == arcade.key.RIGHT:
@@ -331,7 +361,6 @@ class MyGUIWindow(arcade.Window):
             new_lon = self.ll[0] + move_step_lon
             if new_lon <= MAX_LON:
                 self.ll[0] = new_lon
-                self.point = None
             else:
                 self.show_error("Достигнута восточная граница")
         else:
