@@ -445,6 +445,131 @@ class MyGUIWindow(arcade.Window):
         self.light_theme = not self.light_theme
         self.update_map()
 
+        def on_mouse_press(self, x, y, button, modifiers):
+        if button != arcade.MOUSE_BUTTON_RIGHT:
+            return  # обрабатываем только правый клик
+        map_x = SCREEN_WIDTH - MAP_SIZE[0] * MAP_SCALE / 2 - MAP_BORDER
+        map_y = SCREEN_HEIGHT / 2
+        map_width = MAP_SIZE[0] * MAP_SCALE
+        map_height = MAP_SIZE[1] * MAP_SCALE
+
+        if not (map_x <= x <= map_x + map_width and map_y <= y <= map_y + map_height):
+            return
+        self.points = []
+        self.search_input.text = ""
+        self.message_text = None
+        self.success_message = ""
+        self.error_message = ""
+
+        img_x = (x - map_x) / MAP_SCALE
+        img_y = (y - map_y) / MAP_SCALE
+
+        geo_lon = self.ll[0] - self.spn[0] / 2 + (img_x / MAP_SIZE[0]) * self.spn[0]
+        geo_lat = self.ll[1] + self.spn[1] / 2 - (img_y / MAP_SIZE[1]) * self.spn[1]
+
+        self.reverse_gcode(geo_lon, geo_lat)
+
+    def reverse_gcode(self, lon, lat):
+
+        geocoder_api_server = "http://geocode-maps.yandex.ru/1.x/"
+        geocoder_params = {
+            "apikey": "8013b162-6b42-4997-9691-77b7074026e0",
+            "geocode": f"{lon},{lat}",
+            "format": "json",
+            "kind": "house",      # ищем дома (организации)
+            "results": "1"
+        }
+
+        try:
+            response = requests.get(geocoder_api_server, params=geocoder_params)
+            if not response:
+                return
+
+            json_response = response.json()
+            feature_member = json_response["response"]["GeoObjectCollection"]["featureMember"]
+
+            if not feature_member:
+                return
+
+            toponym = feature_member[0]["GeoObject"]
+            toponym_coords = toponym["Point"]["pos"].split()
+            toponym_lon = float(toponym_coords[0])
+            toponym_lat = float(toponym_coords[1])
+
+            # чек расстояния от точки клика до найденного объекта
+            distance_m = self.hav_distance(lon, lat, toponym_lon, toponym_lat)
+            if distance_m > 50:
+                return  # дальше 50 метров не показываем
+
+            # делаем адрес с учётом индекса, если нужно
+            address = toponym["metaDataProperty"]["GeocoderMetaData"]["text"]
+            if self.show_postal_code:
+                postal_code = toponym["metaDataProperty"]["GeocoderMetaData"]["Address"].get("postal_code", "")
+                if postal_code:
+                    address = f"{postal_code}, {address}"
+
+            self.points = [(toponym_lon, toponym_lat)]
+
+            # центрирование. поиск границ
+            bbox = toponym.get("boundedBy", {}).get("Envelope", {})
+            if bbox:
+                lower_corner = bbox.get("lowerCorner", "").split()
+                upper_corner = bbox.get("upperCorner", "").split()
+                if len(lower_corner) == 2 and len(upper_corner) == 2:
+                    new_min_lon = float(lower_corner[0])
+                    new_min_lat = float(lower_corner[1])
+                    new_max_lon = float(upper_corner[0])
+                    new_max_lat = float(upper_corner[1])
+                else:
+                    new_min_lon = toponym_lon
+                    new_min_lat = toponym_lat
+                    new_max_lon = toponym_lon
+                    new_max_lat = toponym_lat
+            else:
+                new_min_lon = toponym_lon
+                new_min_lat = toponym_lat
+                new_max_lon = toponym_lon
+                new_max_lat = toponym_lat
+
+            self.min_lon = new_min_lon
+            self.min_lat = new_min_lat
+            self.max_lon = new_max_lon
+            self.max_lat = new_max_lat
+
+            self.ll = [(self.min_lon + self.max_lon) / 2, (self.min_lat + self.max_lat) / 2]
+            delta_lon = self.max_lon - self.min_lon
+            delta_lat = self.max_lat - self.min_lat
+            if delta_lon == 0 and delta_lat == 0:
+                self.spn = [0.005, 0.005]
+            else:
+                self.spn[0] = max(delta_lon * 1.2, 0.0001)
+                self.spn[1] = max(delta_lat * 1.2, 0.0001)
+                self.spn[0] = min(self.spn[0], 90.0)
+                self.spn[1] = min(self.spn[1], 90.0)
+            self.gui_elements[0].text = str(round(self.ll[0], 6))
+            self.gui_elements[1].text = str(round(self.ll[1], 6))
+            self.gui_elements[2].text = str(round(self.spn[0], 6))
+            self.gui_elements[3].text = str(round(self.spn[1], 6))
+
+            self.update_map()
+            self.show_success(f"Найден: {address}")
+
+        except Exception:
+            return
+
+    @staticmethod
+    def hav_distance(lon1, lat1, lon2, lat2):
+        R = 6371000  # радиус Земли в м
+        lat1_rad = math.radians(lat1)
+        lat2_rad = math.radians(lat2)
+        dlat = math.radians(lat2 - lat1)
+        dlon = math.radians(lon2 - lon1)
+
+        a = math.sin(dlat / 2) ** 2 + math.cos(lat1_rad) * math.cos(lat2_rad) * math.sin(dlon / 2) ** 2
+        c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
+
+        return R * c
+
 
 if __name__ == "__main__":
     game = MyGUIWindow()
