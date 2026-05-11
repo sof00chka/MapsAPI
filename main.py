@@ -21,6 +21,8 @@ MAX_LAT = 65.0
 
 class MyGUIWindow(arcade.Window):
     def __init__(self):
+        self.session = requests.Session()  # reuse соединений, иными словами магический фпс
+
         super().__init__(SCREEN_WIDTH, SCREEN_HEIGHT, "Яндекс карты")
         arcade.set_background_color(arcade.color.GRAY)
 
@@ -348,7 +350,7 @@ class MyGUIWindow(arcade.Window):
             params['pt'] = "~".join(points_str)
 
         try:
-            response = requests.get(api_server, params=params)
+            response = self.session.get(api_server, params=params)
             if not response:
                 self.show_error("Ошибка при загрузке карты")
                 return
