@@ -1,3 +1,5 @@
+import math
+
 import arcade
 from arcade.gui import UIManager, UIFlatButton, UILabel, UIInputText
 import requests
@@ -445,7 +447,7 @@ class MyGUIWindow(arcade.Window):
         self.light_theme = not self.light_theme
         self.update_map()
 
-        def on_mouse_press(self, x, y, button, modifiers):
+    def on_mouse_press(self, x, y, button, modifiers):
         if button != arcade.MOUSE_BUTTON_RIGHT:
             return  # обрабатываем только правый клик
         map_x = SCREEN_WIDTH - MAP_SIZE[0] * MAP_SCALE / 2 - MAP_BORDER
