@@ -441,8 +441,6 @@ class MyGUIWindow(arcade.Window):
         geo_lon = (self.ll[0] - self.spn[0] / 2) + norm_x * self.spn[0]
         geo_lat = (self.ll[1] - self.spn[1] / 2) + norm_y * self.spn[1]
 
-        print(f"Клик: экран=({x},{y}) -> geo=({geo_lon:.6f}, {geo_lat:.6f})")
-
         if button == arcade.MOUSE_BUTTON_LEFT:
             self.search_by_coordinates(geo_lon, geo_lat)
         elif button == arcade.MOUSE_BUTTON_RIGHT:
